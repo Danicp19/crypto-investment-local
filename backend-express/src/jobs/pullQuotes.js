@@ -53,7 +53,9 @@ async function tick() {
 
 function start() {
   tick(); // primer disparo
-  setInterval(tick, 1800000); // cada 30 minutos
-}
+  setInterval(tick, 300000);   // cada 5 minutos
 
+  
+}
+ // cada 30 minutos 1800000
 module.exports = { start,tick };

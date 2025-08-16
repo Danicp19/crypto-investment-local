@@ -9,10 +9,13 @@ import {
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  TimeScale
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale
+);
+import 'chartjs-adapter-date-fns';
 
 export default function Home() {
   const [cryptos, setCryptos] = useState([]);
@@ -78,10 +81,7 @@ export default function Home() {
   }, [searchTerm]);
 
 
-
-
-  // Cargar y actualizar histórico cada 30s para la cripto seleccionada
-  // Cargar y actualizar histórico cada 30s para la cripto seleccionada
+  // Cargar y actualizar histórico cada 5 min para la cripto seleccionada
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -133,42 +133,122 @@ export default function Home() {
     return true;
   });
 
+  const getDailyAverageHistory = (history) => {
+    const grouped = history.reduce((acc, h) => {
+      const date = new Date(h.timestamp);
+      const day = date.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+      if (!acc[day]) acc[day] = [];
+      acc[day].push(Number(h.price)); // convertir a number
+      return acc;
+    }, {});
+
+    return Object.entries(grouped).map(([day, prices]) => ({
+      x: new Date(`${day}T12:00:00`), // medio día para Chart.js
+      y: prices.reduce((sum, p) => sum + p, 0) / prices.length, // promedio diario
+    }));
+  };
+
+  // Agrupa historial por intervalos de minutos (ej: 30 min) y promedia
+  const getIntervalAverageHistory = (history, intervalMinutes = 30) => {
+    const grouped = {};
+
+    history.forEach(h => {
+      const date = new Date(h.timestamp);
+      // Redondear al intervalo más cercano
+      const rounded = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        Math.floor(date.getMinutes() / intervalMinutes) * intervalMinutes,
+        0
+      );
+
+      const key = rounded.toISOString();
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(Number(h.price));
+    });
+
+    return Object.entries(grouped).map(([timestamp, prices]) => ({
+      x: new Date(timestamp),
+      y: prices.reduce((sum, p) => sum + p, 0) / prices.length
+    }));
+
+  };
+
+
+  const displayedHistory = (() => {
+    if (range === '7d' || range === '1m') {
+      return getDailyAverageHistory(history);
+    } else if (range === '24h') {
+      return getIntervalAverageHistory(history, 30); // 30 minutos para 24h
+    } else if (range === '1h') {
+      return getIntervalAverageHistory(history, 5); // 5 minutos para 1h
+    } else {
+      return history.map(h => ({ x: new Date(h.timestamp), y: Number(h.price) }));
+    }
+  })();
+
+
+  const currentPrice = history.length ? history[history.length - 1].price : 0;
 
   const chartData = {
-    labels: history.map(h => new Date(h.timestamp).toLocaleTimeString()), // formato legible
     datasets: [
       {
         label: `${selected} Price`,
-        data: history.map(h => h.price),
+        data: displayedHistory,
         fill: false,
         borderColor: 'rgb(75, 192, 192)',
         pointRadius: 3,
         tension: 0.2
+      },
+      {
+        label: 'Current Price',
+        data: displayedHistory.map(h => ({ x: h.x, y: currentPrice })),
+        borderColor: 'red',
+        borderDash: [5, 5],
+        pointRadius: 0,
+        fill: false
       }
     ]
   };
+
 
   const chartOptions = {
     responsive: true,
     plugins: {
       tooltip: {
         callbacks: {
-          label: function (context) {
-            return `$${context.formattedValue}`;
-          }
+          label: (context) => `$${context.formattedValue}`,
         }
       }
     },
     scales: {
       x: {
-        ticks: {
-          maxRotation: 45,
-          minRotation: 45
-        }
+        type: 'time',
+        time: {
+          unit: (() => {
+            if (range === '1h') return 'minute';
+            if (range === '24h') return 'hour';
+            if (range === '7d' || range === '1m') return 'day';
+            if (range === 'YTD') return 'month';
+            return 'hour';
+          })(),
+          displayFormats: {
+            minute: 'HH:mm',
+            hour: 'HH:mm',
+            day: 'dd MMM',
+            month: 'MMM yyyy'
+          }
+        },
+
+        ticks: { maxRotation: 45, minRotation: 45 }
+      },
+      y: {
+        beginAtZero: false
       }
     }
   };
-
 
   return (
     <main className="p-6 space-y-6">
@@ -243,7 +323,6 @@ export default function Home() {
         </table>
       </div>
 
-
       {/* Selector de cripto */}
       <div>
         <label className="mr-2 font-medium">Select crypto:</label>
@@ -264,10 +343,6 @@ export default function Home() {
           }
 
         </select>
-
-
-
-
 
       </div>
       <div className="flex gap-2 mb-4">

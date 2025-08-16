@@ -1,6 +1,7 @@
 const pool = require('../db');
 const { listLatest, quotesBySymbol } = require('../services/cmc');
 
+// Obtener lista de criptomonedas
 const getCryptos = async (req, res) => {
   try {
     if (process.env.MOCK === 'true') {
@@ -19,6 +20,7 @@ const getCryptos = async (req, res) => {
       volume: i.quote.USD.volume_24h,
       percent_change_24h: i.quote.USD.percent_change_24h
     }));
+
     res.json(mapped);
   } catch (e) {
     console.error(e);
@@ -26,6 +28,7 @@ const getCryptos = async (req, res) => {
   }
 };
 
+// Obtener criptomoneda por símbolo
 const getCryptoBySymbol = async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
@@ -54,11 +57,19 @@ const getCryptoBySymbol = async (req, res) => {
       cryptoId = insertRes.insertId;
     }
 
-    await pool.query(
-      `INSERT INTO price_history (crypto_id, price, volume_24h, percent_change_24h)
-       VALUES (?, ?, ?, ?)`,
-      [cryptoId, out.price, out.volume, out.percent_change_24h]
+    // 🔹 Verificar si ya hay un snapshot reciente (últimos 5 min)
+    const [recent] = await pool.query(
+      'SELECT id FROM price_history WHERE crypto_id = ? AND timestamp >= NOW() - INTERVAL 5 MINUTE',
+      [cryptoId]
     );
+
+    if (recent.length === 0) {
+      await pool.query(
+        `INSERT INTO price_history (crypto_id, price, volume_24h, percent_change_24h)
+         VALUES (?, ?, ?, ?)`,
+        [cryptoId, out.price, out.volume, out.percent_change_24h]
+      );
+    }
 
     res.json(out);
   } catch (e) {
@@ -67,6 +78,8 @@ const getCryptoBySymbol = async (req, res) => {
   }
 };
 
+
+// Obtener histórico de precios
 const getHistory = async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
@@ -94,16 +107,14 @@ const getHistory = async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `
-      SELECT ph.timestamp, ph.price
-      FROM price_history ph
-      JOIN cryptocurrencies c ON c.id = ph.crypto_id
-      WHERE c.symbol = ?
-        AND ( ? IS NULL OR ph.timestamp >= ? )
-        AND ( ? IS NULL OR ph.timestamp <= ? )
-        ${rangeCondition}
-      ORDER BY ph.timestamp ASC
-      `,
+      `SELECT ph.timestamp, ph.price
+       FROM price_history ph
+       JOIN cryptocurrencies c ON c.id = ph.crypto_id
+       WHERE c.symbol = ?
+         AND ( ? IS NULL OR ph.timestamp >= ? )
+         AND ( ? IS NULL OR ph.timestamp <= ? )
+         ${rangeCondition}
+       ORDER BY ph.timestamp ASC`,
       [symbol, from || null, from || null, to || null, to || null]
     );
 
@@ -114,5 +125,8 @@ const getHistory = async (req, res) => {
   }
 };
 
-
-module.exports = { getCryptos, getCryptoBySymbol, getHistory };
+module.exports = {
+  getCryptos,
+  getCryptoBySymbol,
+  getHistory
+};
