@@ -44,7 +44,7 @@ const getCryptoBySymbol = async (req, res) => {
       percent_change_24h: item.quote.USD.percent_change_24h
     };
 
-    // 🔹 Guardar snapshot inicial en la BD para histórico
+    // 🔹 Guardar snapshot inicial en la BD para histórico y duplicados
     let cryptoId;
     const [rows] = await pool.query('SELECT id FROM cryptocurrencies WHERE symbol = ?', [symbol]);
     if (rows.length) {

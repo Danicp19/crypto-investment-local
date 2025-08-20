@@ -16,3 +16,9 @@ CREATE TABLE price_history (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (crypto_id) REFERENCES cryptocurrencies(id)
 );
+CREATE TABLE watchlist (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT DEFAULT 1,  -- varios usuarios
+  symbol VARCHAR(10) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
